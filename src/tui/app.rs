@@ -17,9 +17,11 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
+use std::collections::HashSet;
 use std::env;
 use std::io;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 #[derive(PartialEq)]
 enum Section {
@@ -38,6 +40,7 @@ pub struct App {
     filter_text: String,
     filter_mode: bool,
     show_detail: bool,
+    selected_processes: HashSet<Uuid>,
 }
 
 impl App {
@@ -57,6 +60,7 @@ impl App {
             filter_text: String::new(),
             filter_mode: false,
             show_detail: false,
+            selected_processes: HashSet::new(),
         };
 
         // Select first item by default
@@ -132,7 +136,7 @@ impl App {
                                 self.show_detail = false;
                             }
                             KeyCode::Char('d') => {
-                                self.kill_selected_process()?;
+                                self.kill_selected_processes()?;
                                 self.show_detail = false;
                             }
                             _ => {}
@@ -147,6 +151,7 @@ impl App {
                             }
                             KeyCode::Esc => {
                                 self.filter_text.clear();
+                                self.selected_processes.clear();
                             }
                             KeyCode::Char('i') => {
                                 if self.selected_section == Section::Processes {
@@ -162,8 +167,18 @@ impl App {
                             KeyCode::Char('k') | KeyCode::Up => {
                                 self.previous_item();
                             }
+                            KeyCode::Char(' ') => {
+                                if self.selected_section == Section::Processes {
+                                    self.toggle_current_process_selection();
+                                }
+                            }
+                            KeyCode::Char('a') => {
+                                if self.selected_section == Section::Processes {
+                                    self.toggle_all_processes_selection();
+                                }
+                            }
                             KeyCode::Char('d') => {
-                                self.kill_selected_process()?;
+                                self.kill_selected_processes()?;
                             }
                             KeyCode::Enter => {
                                 if self.selected_section == Section::Processes {
@@ -229,9 +244,11 @@ impl App {
 
         // Help
         let help_text = if self.filter_mode {
-            "[Esc] cancel  [Enter] apply filter  [Backspace] delete"
+            "[Esc] cancel  [Enter] apply filter  [Backspace] delete".to_string()
+        } else if !self.selected_processes.is_empty() {
+            format!("[Space] select [a] all [d] kill {} [Esc] clear [q] quit", self.selected_processes.len())
         } else {
-            "[/] filter [i] detail [j/k] move [Tab] switch [Enter] run/detail [d] kill [q] quit"
+            "[/] filter [Space] select [a] all [i] detail [j/k] move [Tab] switch [d] kill [q] quit".to_string()
         };
 
         let help = Paragraph::new(help_text)
@@ -271,8 +288,15 @@ impl App {
                     format!("{}s", duration.num_seconds())
                 };
 
+                let checkbox = if self.selected_processes.contains(&p.id) {
+                    "[✓]"
+                } else {
+                    "[ ]"
+                };
+
                 let content = format!(
-                    "{:<25} {:>5.1}% {:>6}MB  :{:<5}  {}",
+                    "{} {:<23} {:>5.1}% {:>6}MB  :{:<5}  {}",
+                    checkbox,
                     p.name,
                     metrics.cpu_percent,
                     memory_mb,
@@ -434,24 +458,98 @@ impl App {
         }
     }
 
-    fn kill_selected_process(&mut self) -> Result<()> {
+    fn toggle_current_process_selection(&mut self) {
+        if let Some(idx) = self.process_list_state.selected() {
+            let processes = self.manager.list_processes();
+            let filtered_processes: Vec<_> = if self.filter_text.is_empty() {
+                processes.iter().map(|&p| p).collect()
+            } else {
+                processes
+                    .iter()
+                    .filter(|p| p.name.to_lowercase().contains(&self.filter_text.to_lowercase()))
+                    .map(|&p| p)
+                    .collect()
+            };
+
+            if let Some(process) = filtered_processes.get(idx) {
+                if self.selected_processes.contains(&process.id) {
+                    self.selected_processes.remove(&process.id);
+                } else {
+                    self.selected_processes.insert(process.id);
+                }
+            }
+        }
+    }
+
+    fn toggle_all_processes_selection(&mut self) {
+        let processes = self.manager.list_processes();
+        let filtered_processes: Vec<_> = if self.filter_text.is_empty() {
+            processes.iter().map(|&p| p).collect()
+        } else {
+            processes
+                .iter()
+                .filter(|p| p.name.to_lowercase().contains(&self.filter_text.to_lowercase()))
+                .map(|&p| p)
+                .collect()
+        };
+
+        // Check if all filtered processes are selected
+        let all_selected = filtered_processes
+            .iter()
+            .all(|p| self.selected_processes.contains(&p.id));
+
+        if all_selected {
+            // Deselect all filtered processes
+            for process in filtered_processes {
+                self.selected_processes.remove(&process.id);
+            }
+        } else {
+            // Select all filtered processes
+            for process in filtered_processes {
+                self.selected_processes.insert(process.id);
+            }
+        }
+    }
+
+    fn kill_selected_processes(&mut self) -> Result<()> {
         if self.selected_section != Section::Processes {
             return Ok(());
         }
 
-        if let Some(idx) = self.process_list_state.selected() {
-            let processes = self.manager.list_processes();
-            if let Some(process) = processes.get(idx) {
-                let id = process.id;
-                self.manager.kill_process(&id, 15)?;
-                save_manager_state(&self.manager)?;
+        // If there are selected processes, kill them
+        if !self.selected_processes.is_empty() {
+            let ids_to_kill: Vec<Uuid> = self.selected_processes.iter().copied().collect();
+            for id in ids_to_kill {
+                let _ = self.manager.kill_process(&id, 15);
+            }
+            self.selected_processes.clear();
+            save_manager_state(&self.manager)?;
 
-                // Adjust selection
-                let new_len = self.manager.list_processes().len();
-                if new_len == 0 {
-                    self.process_list_state.select(None);
-                } else if idx >= new_len {
+            // Adjust selection
+            let new_len = self.manager.list_processes().len();
+            if new_len == 0 {
+                self.process_list_state.select(None);
+            } else if let Some(idx) = self.process_list_state.selected() {
+                if idx >= new_len {
                     self.process_list_state.select(Some(new_len - 1));
+                }
+            }
+        } else {
+            // If no processes are selected, kill the current one (original behavior)
+            if let Some(idx) = self.process_list_state.selected() {
+                let processes = self.manager.list_processes();
+                if let Some(process) = processes.get(idx) {
+                    let id = process.id;
+                    self.manager.kill_process(&id, 15)?;
+                    save_manager_state(&self.manager)?;
+
+                    // Adjust selection
+                    let new_len = self.manager.list_processes().len();
+                    if new_len == 0 {
+                        self.process_list_state.select(None);
+                    } else if idx >= new_len {
+                        self.process_list_state.select(Some(new_len - 1));
+                    }
                 }
             }
         }
