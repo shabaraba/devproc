@@ -1,4 +1,6 @@
 mod cli;
+mod config;
+mod mcp;
 mod models;
 mod process;
 mod script;
@@ -35,6 +37,15 @@ fn main() -> Result<()> {
         Some(Commands::Kill { target, signal }) => {
             let mut manager = load_manager_state()?;
             cli::commands::handle_kill(&target, signal, &mut manager)?;
+        }
+        Some(Commands::History { limit, clear }) => {
+            cli::commands::handle_history(limit, clear)?;
+        }
+        Some(Commands::Config { edit }) => {
+            cli::commands::handle_config(edit)?;
+        }
+        Some(Commands::Mcp) => {
+            cli::commands::handle_mcp()?;
         }
         None => {
             // No command specified, launch TUI

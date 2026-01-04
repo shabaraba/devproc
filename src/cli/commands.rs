@@ -58,6 +58,23 @@ pub enum Commands {
         #[arg(short, long, default_value = "15")]
         signal: i32,
     },
+    /// Show command history
+    History {
+        /// Maximum number of entries to show
+        #[arg(short, long)]
+        limit: Option<usize>,
+        /// Clear history
+        #[arg(long)]
+        clear: bool,
+    },
+    /// Manage configuration
+    Config {
+        /// Edit configuration file
+        #[arg(long)]
+        edit: bool,
+    },
+    /// Start MCP server
+    Mcp,
 }
 
 pub fn handle_list(format: &str, manager: &mut ProcessManager) -> Result<()> {
@@ -221,4 +238,71 @@ pub fn save_manager_state(manager: &ProcessManager) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     manager.save_state(&state_file)
+}
+
+pub fn handle_history(limit: Option<usize>, clear: bool) -> Result<()> {
+    use crate::process::HistoryManager;
+
+    let history_file = dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("devproc")
+        .join("history.json");
+
+    let mut history = HistoryManager::default();
+    let _ = history.load(&history_file);
+
+    if clear {
+        history.clear();
+        history.save(&history_file)?;
+        println!("History cleared");
+        return Ok(());
+    }
+
+    let entries = history.list_entries();
+    let limit = limit.unwrap_or(entries.len());
+
+    println!("{:<50} {:<20}", "COMMAND", "EXECUTED");
+    println!("{}", "-".repeat(70));
+
+    for entry in entries.iter().take(limit) {
+        let duration = Local::now().signed_duration_since(entry.executed_at);
+        let time_str = if duration.num_hours() > 0 {
+            format!("{}h ago", duration.num_hours())
+        } else if duration.num_minutes() > 0 {
+            format!("{}m ago", duration.num_minutes())
+        } else {
+            format!("{}s ago", duration.num_seconds())
+        };
+
+        println!("{:<50} {:<20}", entry.full_command(), time_str);
+    }
+
+    Ok(())
+}
+
+pub fn handle_config(edit: bool) -> Result<()> {
+    use crate::config::ConfigManager;
+
+    let config_path = ConfigManager::get_config_path();
+
+    if edit {
+        let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
+        std::process::Command::new(editor)
+            .arg(&config_path)
+            .status()?;
+    } else {
+        let config = ConfigManager::load()?;
+        let toml_str = toml::to_string_pretty(&config)?;
+        println!("Configuration file: {}", config_path.display());
+        println!("\n{}", toml_str);
+    }
+
+    Ok(())
+}
+
+pub fn handle_mcp() -> Result<()> {
+    use crate::mcp::McpServer;
+
+    let mut server = McpServer::new()?;
+    server.run()
 }

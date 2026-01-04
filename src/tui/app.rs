@@ -35,6 +35,9 @@ pub struct App {
     script_list_state: ListState,
     last_update: Instant,
     should_quit: bool,
+    filter_text: String,
+    filter_mode: bool,
+    show_detail: bool,
 }
 
 impl App {
@@ -51,6 +54,9 @@ impl App {
             script_list_state: ListState::default(),
             last_update: Instant::now(),
             should_quit: false,
+            filter_text: String::new(),
+            filter_mode: false,
+            show_detail: false,
         };
 
         // Select first item by default
@@ -103,26 +109,71 @@ impl App {
             // Handle input (with timeout for refresh)
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            self.should_quit = true;
+                    if self.filter_mode {
+                        match key.code {
+                            KeyCode::Char(c) => {
+                                self.filter_text.push(c);
+                            }
+                            KeyCode::Backspace => {
+                                self.filter_text.pop();
+                            }
+                            KeyCode::Esc => {
+                                self.filter_mode = false;
+                                self.filter_text.clear();
+                            }
+                            KeyCode::Enter => {
+                                self.filter_mode = false;
+                            }
+                            _ => {}
                         }
-                        KeyCode::Tab => {
-                            self.switch_section();
+                    } else if self.show_detail {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Char('q') => {
+                                self.show_detail = false;
+                            }
+                            KeyCode::Char('d') => {
+                                self.kill_selected_process()?;
+                                self.show_detail = false;
+                            }
+                            _ => {}
                         }
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            self.next_item();
+                    } else {
+                        match key.code {
+                            KeyCode::Char('q') => {
+                                self.should_quit = true;
+                            }
+                            KeyCode::Char('/') => {
+                                self.filter_mode = true;
+                            }
+                            KeyCode::Esc => {
+                                self.filter_text.clear();
+                            }
+                            KeyCode::Char('i') => {
+                                if self.selected_section == Section::Processes {
+                                    self.show_detail = true;
+                                }
+                            }
+                            KeyCode::Tab => {
+                                self.switch_section();
+                            }
+                            KeyCode::Char('j') | KeyCode::Down => {
+                                self.next_item();
+                            }
+                            KeyCode::Char('k') | KeyCode::Up => {
+                                self.previous_item();
+                            }
+                            KeyCode::Char('d') => {
+                                self.kill_selected_process()?;
+                            }
+                            KeyCode::Enter => {
+                                if self.selected_section == Section::Processes {
+                                    self.show_detail = true;
+                                } else {
+                                    self.run_selected_script()?;
+                                }
+                            }
+                            _ => {}
                         }
-                        KeyCode::Char('k') | KeyCode::Up => {
-                            self.previous_item();
-                        }
-                        KeyCode::Char('d') => {
-                            self.kill_selected_process()?;
-                        }
-                        KeyCode::Enter => {
-                            self.run_selected_script()?;
-                        }
-                        _ => {}
                     }
                 }
             }
@@ -136,6 +187,16 @@ impl App {
     }
 
     fn ui(&mut self, f: &mut Frame) {
+        if self.show_detail {
+            if let Some(idx) = self.process_list_state.selected() {
+                let processes = self.manager.list_processes();
+                if let Some(process) = processes.get(idx) {
+                    crate::tui::detail::render_detail_view(f, f.area(), process, &self.manager);
+                }
+            }
+            return;
+        }
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -147,7 +208,15 @@ impl App {
             .split(f.area());
 
         // Title
-        let title = Paragraph::new("devproc - Development Process Manager")
+        let title_text = if self.filter_mode {
+            format!("devproc - Filter: {}_", self.filter_text)
+        } else if !self.filter_text.is_empty() {
+            format!("devproc - Filtered by: {}", self.filter_text)
+        } else {
+            "devproc - Development Process Manager".to_string()
+        };
+
+        let title = Paragraph::new(title_text)
             .style(Style::default().fg(Color::Cyan))
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(title, chunks[0]);
@@ -159,7 +228,13 @@ impl App {
         self.render_scripts(f, chunks[2]);
 
         // Help
-        let help = Paragraph::new("[j/k] move [Tab] switch [Enter] run [d] kill [q] quit")
+        let help_text = if self.filter_mode {
+            "[Esc] cancel  [Enter] apply filter  [Backspace] delete"
+        } else {
+            "[/] filter [i] detail [j/k] move [Tab] switch [Enter] run/detail [d] kill [q] quit"
+        };
+
+        let help = Paragraph::new(help_text)
             .style(Style::default().fg(Color::DarkGray))
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(help, chunks[3]);
@@ -170,7 +245,17 @@ impl App {
         let border_color = if is_focused { Color::Blue } else { Color::DarkGray };
 
         let processes = self.manager.list_processes();
-        let items: Vec<ListItem> = processes
+        let filtered_processes: Vec<_> = if self.filter_text.is_empty() {
+            processes.iter().map(|&p| p).collect()
+        } else {
+            processes
+                .iter()
+                .filter(|p| p.name.to_lowercase().contains(&self.filter_text.to_lowercase()))
+                .map(|&p| p)
+                .collect()
+        };
+
+        let items: Vec<ListItem> = filtered_processes
             .iter()
             .map(|p| {
                 let metrics = self.manager.get_metrics(p).unwrap_or_default();
@@ -202,7 +287,7 @@ impl App {
         let list = List::new(items)
             .block(
                 Block::default()
-                    .title(format!(" Running Processes ({}) ", processes.len()))
+                    .title(format!(" Running Processes ({}/{}) ", filtered_processes.len(), processes.len()))
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color)),
             )
@@ -220,8 +305,16 @@ impl App {
         let is_focused = self.selected_section == Section::Scripts;
         let border_color = if is_focused { Color::Blue } else { Color::DarkGray };
 
-        let items: Vec<ListItem> = self
-            .scripts
+        let filtered_scripts: Vec<_> = if self.filter_text.is_empty() {
+            self.scripts.iter().collect()
+        } else {
+            self.scripts
+                .iter()
+                .filter(|s| s.name.to_lowercase().contains(&self.filter_text.to_lowercase()))
+                .collect()
+        };
+
+        let items: Vec<ListItem> = filtered_scripts
             .iter()
             .map(|s| {
                 let content = format!("{:<20} {}", s.name, s.command);
@@ -235,7 +328,7 @@ impl App {
         let list = List::new(items)
             .block(
                 Block::default()
-                    .title(format!(" Scripts - {} ", cwd_str))
+                    .title(format!(" Scripts ({}/{}) - {} ", filtered_scripts.len(), self.scripts.len(), cwd_str))
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color)),
             )

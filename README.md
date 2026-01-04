@@ -96,8 +96,39 @@ devproc kill 12345
 devproc kill my-dev-server --signal 9
 ```
 
-## Phase 1 MVP機能
+#### コマンド履歴
 
+```bash
+# 履歴表示
+devproc history
+
+# 履歴件数制限
+devproc history --limit 10
+
+# 履歴クリア
+devproc history --clear
+```
+
+#### 設定管理
+
+```bash
+# 設定表示
+devproc config
+
+# 設定ファイルを編集
+devproc config --edit
+```
+
+#### MCPサーバー
+
+```bash
+# MCPサーバーとして起動（AIアシスタント連携用）
+devproc mcp
+```
+
+## 実装済み機能
+
+### Phase 1: MVP
 ✅ プロセス一覧表示（sysinfo使用）
 ✅ package.jsonスクリプト検出
 ✅ スクリプト実行（名前自動付与）
@@ -105,10 +136,35 @@ devproc kill my-dev-server --signal 9
 ✅ 基本TUI（メイン画面のみ）
 ✅ 基本CLI（list, start, kill コマンド）
 
-## 今後の実装予定
+### Phase 2: 機能拡充
+✅ 詳細画面（TUIで`i`または`Enter`で表示）
+✅ build.gradle/build.gradle.kts対応
+✅ Makefile対応
+✅ Cargo.toml対応
+✅ コマンド履歴機能
+✅ 設定ファイル対応（~/.config/devproc/config.toml）
+✅ フィルタ機能（TUIで`/`キーで起動）
 
-- Phase 2: 詳細画面、build.gradle対応、履歴機能、設定ファイル対応
-- Phase 3: Makefile/Cargo.toml対応、MCPサーバー、ログ表示
+### Phase 3: 高度な機能
+✅ MCPサーバー（AIアシスタント連携）
+
+## TUIキーバインド
+
+- `/`: フィルタモード開始
+- `Esc`: フィルタ解除 / 画面を戻る
+- `i` または `Enter`: プロセス詳細表示（Processesセクション）
+- `Enter`: スクリプト実行（Scriptsセクション）
+- `j`/`k` または `↑`/`↓`: 項目の選択
+- `Tab`: セクション切り替え
+- `d`: プロセス終了
+- `q`: 終了
+
+## 対応ビルドツール
+
+- **Node.js**: package.json
+- **Gradle**: build.gradle / build.gradle.kts
+- **Make**: Makefile
+- **Rust**: Cargo.toml
 
 ## ライセンス
 

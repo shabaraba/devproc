@@ -15,6 +15,21 @@ impl ScriptDetector {
             scripts.extend(pkg_scripts);
         }
 
+        // Try to find build.gradle or build.gradle.kts
+        if let Ok(gradle_scripts) = Self::detect_gradle(dir) {
+            scripts.extend(gradle_scripts);
+        }
+
+        // Try to find Makefile
+        if let Ok(make_scripts) = Self::detect_makefile(dir) {
+            scripts.extend(make_scripts);
+        }
+
+        // Try to find Cargo.toml
+        if let Ok(cargo_scripts) = Self::detect_cargo(dir) {
+            scripts.extend(cargo_scripts);
+        }
+
         Ok(scripts)
     }
 
@@ -45,6 +60,134 @@ impl ScriptDetector {
                     ));
                 }
             }
+        }
+
+        Ok(scripts)
+    }
+
+    fn detect_gradle(dir: &Path) -> Result<Vec<Script>> {
+        let gradle_path = if dir.join("build.gradle").exists() {
+            dir.join("build.gradle")
+        } else if dir.join("build.gradle.kts").exists() {
+            dir.join("build.gradle.kts")
+        } else {
+            return Ok(Vec::new());
+        };
+
+        let content = fs::read_to_string(&gradle_path)?;
+        let mut scripts = Vec::new();
+
+        // Common Gradle tasks
+        let common_tasks = vec![
+            "build", "clean", "test", "bootRun", "run", "assemble", "check",
+        ];
+
+        for task in common_tasks {
+            // Check if task is mentioned in the file
+            if content.contains(&format!("task {}", task)) || content.contains(&format!("'{}'", task)) {
+                scripts.push(Script::new(
+                    task.to_string(),
+                    format!("gradle {}", task),
+                    gradle_path.clone(),
+                    dir.to_path_buf(),
+                ));
+            }
+        }
+
+        // Always add basic tasks even if not explicitly defined
+        if scripts.is_empty() {
+            for task in &["build", "clean", "test"] {
+                scripts.push(Script::new(
+                    task.to_string(),
+                    format!("gradle {}", task),
+                    gradle_path.clone(),
+                    dir.to_path_buf(),
+                ));
+            }
+        }
+
+        Ok(scripts)
+    }
+
+    fn detect_makefile(dir: &Path) -> Result<Vec<Script>> {
+        let makefile_path = if dir.join("Makefile").exists() {
+            dir.join("Makefile")
+        } else if dir.join("makefile").exists() {
+            dir.join("makefile")
+        } else {
+            return Ok(Vec::new());
+        };
+
+        let content = fs::read_to_string(&makefile_path)?;
+        let mut scripts = Vec::new();
+
+        // Parse Makefile targets
+        for line in content.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+
+            if let Some(target) = line.split(':').next() {
+                let target = target.trim();
+                // Skip special targets and variables
+                if target.starts_with('.') || target.contains('=') || target.is_empty() {
+                    continue;
+                }
+
+                scripts.push(Script::new(
+                    target.to_string(),
+                    format!("make {}", target),
+                    makefile_path.clone(),
+                    dir.to_path_buf(),
+                ));
+            }
+        }
+
+        Ok(scripts)
+    }
+
+    fn detect_cargo(dir: &Path) -> Result<Vec<Script>> {
+        let cargo_path = dir.join("Cargo.toml");
+        if !cargo_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let content = fs::read_to_string(&cargo_path)?;
+        let mut scripts = Vec::new();
+
+        // Parse TOML to find bin targets
+        if let Ok(toml_value) = content.parse::<toml::Value>() {
+            // Check for [[bin]] sections
+            if let Some(bins) = toml_value.get("bin").and_then(|v| v.as_array()) {
+                for bin in bins {
+                    if let Some(name) = bin.get("name").and_then(|v| v.as_str()) {
+                        scripts.push(Script::new(
+                            format!("run-{}", name),
+                            format!("cargo run --bin {}", name),
+                            cargo_path.clone(),
+                            dir.to_path_buf(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Always add common cargo commands
+        let common_commands = vec![
+            ("build", "cargo build"),
+            ("run", "cargo run"),
+            ("test", "cargo test"),
+            ("check", "cargo check"),
+            ("clean", "cargo clean"),
+        ];
+
+        for (name, cmd) in common_commands {
+            scripts.push(Script::new(
+                name.to_string(),
+                cmd.to_string(),
+                cargo_path.clone(),
+                dir.to_path_buf(),
+            ));
         }
 
         Ok(scripts)
