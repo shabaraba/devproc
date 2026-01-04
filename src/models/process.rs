@@ -47,6 +47,7 @@ impl ManagedProcess {
         }
     }
 
+    #[allow(dead_code)]
     pub fn full_command(&self) -> String {
         if self.args.is_empty() {
             self.command.clone()

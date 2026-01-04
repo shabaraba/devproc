@@ -15,6 +15,7 @@ pub struct HistoryEntry {
 }
 
 impl HistoryEntry {
+    #[allow(dead_code)]
     pub fn new(command: String, args: Vec<String>, cwd: PathBuf) -> Self {
         Self {
             id: Uuid::new_v4(),

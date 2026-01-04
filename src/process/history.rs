@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 pub struct HistoryManager {
     entries: Vec<HistoryEntry>,
+    #[allow(dead_code)]
     max_entries: usize,
 }
 
@@ -16,6 +17,7 @@ impl HistoryManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_entry(&mut self, entry: HistoryEntry) {
         self.entries.insert(0, entry);
         if self.entries.len() > self.max_entries {

@@ -24,10 +24,12 @@ impl ProcessManager {
         self.processes.insert(process.id, process);
     }
 
+    #[allow(dead_code)]
     pub fn remove_process(&mut self, id: &Uuid) -> Option<ManagedProcess> {
         self.processes.remove(id)
     }
 
+    #[allow(dead_code)]
     pub fn get_process(&self, id: &Uuid) -> Option<&ManagedProcess> {
         self.processes.get(id)
     }

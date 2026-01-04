@@ -193,6 +193,7 @@ impl ScriptDetector {
         Ok(scripts)
     }
 
+    #[allow(dead_code)]
     pub fn find_project_dirs(start_dir: &Path) -> Result<Vec<PathBuf>> {
         let mut project_dirs = Vec::new();
 

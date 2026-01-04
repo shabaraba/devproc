@@ -1,8 +1,8 @@
-use crate::models::{ManagedProcess, ProcessMetrics};
+use crate::models::ManagedProcess;
 use crate::process::ProcessManager;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
