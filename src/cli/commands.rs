@@ -73,8 +73,6 @@ pub enum Commands {
         #[arg(long)]
         edit: bool,
     },
-    /// Start MCP server
-    Mcp,
 }
 
 pub fn handle_list(format: &str, manager: &mut ProcessManager) -> Result<()> {
@@ -298,11 +296,4 @@ pub fn handle_config(edit: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-pub fn handle_mcp() -> Result<()> {
-    use crate::mcp::McpServer;
-
-    let mut server = McpServer::new()?;
-    server.run()
 }

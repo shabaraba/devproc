@@ -119,13 +119,6 @@ devproc config
 devproc config --edit
 ```
 
-#### MCPサーバー
-
-```bash
-# MCPサーバーとして起動（AIアシスタント連携用）
-devproc mcp
-```
-
 ## 実装済み機能
 
 ### Phase 1: MVP
@@ -144,9 +137,6 @@ devproc mcp
 ✅ コマンド履歴機能
 ✅ 設定ファイル対応（~/.config/devproc/config.toml）
 ✅ フィルタ機能（TUIで`/`キーで起動）
-
-### Phase 3: 高度な機能
-✅ MCPサーバー（AIアシスタント連携）
 
 ## TUIキーバインド
 

@@ -1,6 +1,5 @@
 mod cli;
 mod config;
-mod mcp;
 mod models;
 mod process;
 mod script;
@@ -43,9 +42,6 @@ fn main() -> Result<()> {
         }
         Some(Commands::Config { edit }) => {
             cli::commands::handle_config(edit)?;
-        }
-        Some(Commands::Mcp) => {
-            cli::commands::handle_mcp()?;
         }
         None => {
             // No command specified, launch TUI
